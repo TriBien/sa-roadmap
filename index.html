@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="Track progress through the 12-week Solution Architect learning roadmap." />
+<meta name="color-scheme" content="light dark" />
+<title>SA Roadmap — Progress Tracker</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <div class="brand">
+      <h1>SA Roadmap</h1>
+      <p class="sub">Senior Engineer → Solution Architect → Enterprise Architect</p>
+    </div>
+    <div class="actions">
+      <button id="exportBtn" class="btn" type="button">Export</button>
+      <button id="importBtn" class="btn" type="button">Import</button>
+      <input id="importFile" type="file" accept=".json,.txt,application/json" hidden />
+      <button id="resetBtn" class="btn ghost" type="button">Reset</button>
+    </div>
+  </div>
+  <div class="wrap progress-wrap">
+    <div class="bar" role="progressbar" aria-label="Overall progress"><div id="overallBar" class="fill"></div></div>
+    <div class="progress-meta">
+      <span id="overallText">0%</span>
+      <span id="syncStatus" class="sync">Loading…</span>
+    </div>
+  </div>
+</header>
+
+<main id="app" class="wrap"></main>
+
+<footer class="wrap foot">
+  <span>Progress auto-saves in this browser (localStorage) on every change and reload — no permission needed. Use Export/Import to keep a text file backup.</span>
+</footer>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
