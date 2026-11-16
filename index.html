@@ -16,6 +16,7 @@
       <p class="sub">Senior Engineer → Solution Architect → Enterprise Architect</p>
     </div>
     <div class="actions">
+      <button id="fileBtn" class="btn" type="button">Connect file</button>
       <button id="exportBtn" class="btn" type="button">Export</button>
       <button id="importBtn" class="btn" type="button">Import</button>
       <input id="importFile" type="file" accept=".json,.txt,application/json" hidden />
@@ -26,6 +27,7 @@
     <div class="bar" role="progressbar" aria-label="Overall progress"><div id="overallBar" class="fill"></div></div>
     <div class="progress-meta">
       <span id="overallText">0%</span>
+      <span id="fileStatus" class="file">File sync: off</span>
       <span id="syncStatus" class="sync">Loading…</span>
     </div>
   </div>

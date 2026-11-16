@@ -62,11 +62,178 @@ function saveState() {
     setSync("Save failed");
     console.warn(e);
   }
+  if (fileHandle) writeToFile();
 }
 function saveSoon() {
   setSync("Saving…");
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveState, 200);
+}
+
+/* ---------- local file sync (File System Access API) ---------- */
+const IDB_NAME = "sa-roadmap-fs";
+const IDB_STORE = "handles";
+
+let fileHandle = null;
+let pendingHandle = null;
+
+function idbOpen() {
+  return new Promise(function (resolve, reject) {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = function () { req.result.createObjectStore(IDB_STORE); };
+    req.onsuccess = function () { resolve(req.result); };
+    req.onerror = function () { reject(req.error); };
+  });
+}
+function idbSet(key, val) {
+  return idbOpen().then(function (db) {
+    return new Promise(function (res, rej) {
+      const tx = db.transaction(IDB_STORE, "readwrite");
+      tx.objectStore(IDB_STORE).put(val, key);
+      tx.oncomplete = function () { res(); };
+      tx.onerror = function () { rej(tx.error); };
+    });
+  });
+}
+function idbGet(key) {
+  return idbOpen().then(function (db) {
+    return new Promise(function (res, rej) {
+      const tx = db.transaction(IDB_STORE, "readonly");
+      const r = tx.objectStore(IDB_STORE).get(key);
+      r.onsuccess = function () { res(r.result); };
+      r.onerror = function () { rej(r.error); };
+    });
+  });
+}
+function idbDel(key) {
+  return idbOpen().then(function (db) {
+    return new Promise(function (res) {
+      const tx = db.transaction(IDB_STORE, "readwrite");
+      tx.objectStore(IDB_STORE).delete(key);
+      tx.oncomplete = function () { res(); };
+      tx.onerror = function () { res(); };
+    });
+  });
+}
+
+function setFileStatus(msg, on) {
+  const el = document.getElementById("fileStatus");
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.toggle("on", !!on);
+}
+function setFileBtn(label, active) {
+  const b = document.getElementById("fileBtn");
+  if (!b) return;
+  b.textContent = label;
+  b.classList.toggle("on", !!active);
+}
+
+async function writeToFile() {
+  if (!fileHandle) return;
+  if (!state.updatedAt) state.updatedAt = new Date().toISOString();
+  try {
+    const w = await fileHandle.createWritable();
+    await w.write(JSON.stringify(state, null, 2));
+    await w.close();
+    setFileStatus("File synced · " + fmtTime(state.updatedAt), true);
+  } catch (e) {
+    setFileStatus("File write failed", false);
+    console.warn("File write failed:", e);
+  }
+}
+
+async function readFromFile() {
+  if (!fileHandle) return false;
+  try {
+    const file = await fileHandle.getFile();
+    const text = await file.text();
+    if (!text.trim()) return false;
+    const data = JSON.parse(text);
+    if (data && typeof data.items === "object") {
+      state = Object.assign(defaultState(), data);
+      state.items = state.items || {};
+      state.notes = state.notes || {};
+      state.collapsed = state.collapsed || {};
+      return true;
+    }
+  } catch (e) {
+    /* NotFoundError when the file does not exist yet, or invalid JSON */
+  }
+  return false;
+}
+
+async function connectFile() {
+  if (!window.showSaveFilePicker) {
+    toast("File sync needs Chrome or Edge");
+    return;
+  }
+  try {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: "sa-roadmap.json",
+      startIn: "documents",
+      types: [{ description: "SA roadmap progress", accept: { "application/json": [".json"] } }]
+    });
+    fileHandle = handle;
+    pendingHandle = null;
+    await idbSet("file", handle);
+    const had = await readFromFile();
+    if (had) {
+      saveState();
+      render();
+      toast("Loaded progress from sa-roadmap.json");
+    } else {
+      await writeToFile();
+      toast("Linked sa-roadmap.json in Documents");
+    }
+    setFileBtn("File linked", true);
+  } catch (e) {
+    if (e && e.name !== "AbortError") toast("Could not link file");
+  }
+}
+
+async function reconnectFile() {
+  if (!pendingHandle) return;
+  try {
+    const perm = await pendingHandle.requestPermission({ mode: "readwrite" });
+    if (perm !== "granted") { setFileStatus("File permission denied", false); return; }
+    fileHandle = pendingHandle;
+    pendingHandle = null;
+    const had = await readFromFile();
+    if (had) { saveState(); render(); }
+    await writeToFile();
+    setFileBtn("File linked", true);
+  } catch (e) {
+    setFileStatus("Reconnect failed", false);
+  }
+}
+
+async function restoreFile() {
+  if (!window.showSaveFilePicker) {
+    setFileStatus("File sync: needs Chrome/Edge", false);
+    const b = document.getElementById("fileBtn");
+    if (b) b.style.display = "none";
+    return;
+  }
+  try {
+    const handle = await idbGet("file");
+    if (!handle) { setFileStatus("File sync: off", false); return; }
+    const perm = await handle.queryPermission({ mode: "readwrite" });
+    if (perm === "granted") {
+      fileHandle = handle;
+      const had = await readFromFile();
+      if (had) { saveState(); render(); }
+      await writeToFile();
+      setFileBtn("File linked", true);
+    } else {
+      pendingHandle = handle;
+      setFileStatus("File linked — click to reconnect", false);
+      setFileBtn("Reconnect file", true);
+    }
+  } catch (e) {
+    console.warn("restoreFile:", e);
+    setFileStatus("File sync: off", false);
+  }
 }
 
 /* ---------- helpers ---------- */
@@ -244,6 +411,10 @@ function bindEvents() {
     saveSoon();
   });
 
+  document.getElementById("fileBtn").addEventListener("click", function () {
+    if (pendingHandle) reconnectFile();
+    else connectFile();
+  });
   document.getElementById("exportBtn").addEventListener("click", exportProgress);
   document.getElementById("importBtn").addEventListener("click", function () {
     document.getElementById("importFile").click();
@@ -307,4 +478,5 @@ function resetProgress() {
   bindEvents();
   render();
   setSync(had ? "Loaded locally" : "Ready · auto-saving");
+  restoreFile();
 })();
